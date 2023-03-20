@@ -1,0 +1,89 @@
+---
+- name: Example playbook for NSXAPI module
+  hosts: localhost
+  gather_facts: no
+  vars:
+    nsx_host: "<nsx_host>"
+    nsx_username: "<nsx_username>"
+    nsx_password: "<nsx_password>"
+    lb_config:
+      display_name: "my-lb"
+      description: "My load balancer"
+      enabled: true
+      lb_algorithm: "ROUND_ROBIN"
+      source_ip_persistence: true
+      server_pool: {
+        display_name: "my-server-pool",
+        description: "My server pool",
+        algorithm: "ROUND_ROBIN",
+        members: [
+          {
+            ip_address: "192.168.0.10",
+            port: 80
+          },
+          {
+            ip_address: "192.168.0.11",
+            port: 80
+          }
+        ]
+      }
+  tasks:
+    - name: Create load balancer
+      nsxapi:
+        host: "{{ nsx_host }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        action: create_load_balancer
+        lb_config: "{{ lb_config }}"
+      register: result_create_lb
+      ignore_errors: yes
+
+    - name: Get load balancer
+      nsxapi:
+        host: "{{ nsx_host }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        action: get_load_balancer
+        lb_id: "<lb_id>"
+      register: result_get_lb
+      ignore_errors: yes
+
+    - name: List load balancers
+      nsxapi:
+        host: "{{ nsx_host }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        action: list_load_balancers
+      register: result_list_lb
+      ignore_errors: yes
+
+    - name: Update load balancer
+      nsxapi:
+        host: "{{ nsx_host }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        action: update_load_balancer
+        lb_id: "<lb_id>"
+        lb_config: "{{ lb_config }}"
+      register: result_update_lb
+      ignore_errors: yes
+
+    - name: Delete load balancer
+      nsxapi:
+        host: "{{ nsx_host }}"
+        username: "{{ nsx_username }}"
+        password: "{{ nsx_password }}"
+        action: delete_load_balancer
+        lb_id: "<lb_id>"
+      register: result_delete_lb
+      ignore_errors: yes
+
+    - name: Print results
+      debug:
+        var: item
+      loop:
+        - result_create_lb
+        - result_get_lb
+        - result_list_lb
+        - result_update_lb
+        - result_delete_lb
