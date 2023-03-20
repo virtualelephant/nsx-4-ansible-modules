@@ -1,63 +1,167 @@
 #!/usr/bin/env python
+
 import requests
 import yaml
 
-class NSXAPI:
-    def __init__(self, host, username, password):
-        self.host = host
-        self.username = username
-        self.password = password
-        self.headers = {'Content-Type': 'application/json'}
-        self.session = requests.Session()
-        self.login()
+from ansible.module_utils.basic import AnsibleModule
 
-    def login(self):
-        url = f"https://{self.host}/api/session/create"
-        data = {"j_username": self.username, "j_password": self.password}
-        response = self.session.post(url, headers=self.headers, json=data)
+# Load the NSX API specification YAML file
+with open('/usr/share/ansible/custom_modules/data/vmware_nsx_api_spec.yaml', 'r') as f:
+    api_spec = yaml.safe_load(f)
+
+# Define the base URL for NSX API requests
+base_url = 'https://{}/api/{}'.format('{host}', api_spec['version'])
+
+# Define the HTTP headers for NSX API requests
+headers = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+}
+
+# Define the NSX error codes to ignore
+ignore_errors = [
+    '400 Bad Request',
+    '404 Not Found',
+    '409 Conflict',
+    '503 Service Unavailable'
+]
+
+def send_api_request(action, url, headers, data=None):
+    """
+    Sends an API request to NSX and returns the response.
+
+    Args:
+        action (str): The HTTP method for the API request.
+        url (str): The URL for the API request.
+        headers (dict): The HTTP headers for the API request.
+        data (dict): The data to send with the API request (optional).
+
+    Returns:
+        dict: The response from the API request.
+    """
+
+    # Build the full URL for the API request
+    full_url = base_url + url
+
+    # Send the API request and capture the response
+    response = requests.request(action, full_url, headers=headers, json=data, verify=False)
+
+    # If the response code is not in the ignore_errors list, raise an exception
+    if response.status_code not in ignore_errors:
         response.raise_for_status()
 
-    def logout(self):
-        url = f"https://{self.host}/api/session/destroy"
-        response = self.session.post(url, headers=self.headers)
-        response.raise_for_status()
+    # If the response code is in the ignore_errors list, return an empty dictionary
+    return {}
 
-    def call_api(self, endpoint, method='GET', data=None):
-        url = f"https://{self.host}/api/{endpoint}"
-        response = self.session.request(method, url, headers=self.headers, json=data)
-        response.raise_for_status()
-        return response.json()
+def create_load_balancer(module, host, username, password, lb_config):
+    """
+    Creates a new load balancer service in NSX.
 
-    # Load Balancer API functions
-    def list_load_balancers(self):
-        endpoint = "loadbalancer/services"
-        return self.call_api(endpoint)
+    Args:
+        module (AnsibleModule): The AnsibleModule object.
+        host (str): The NSX hostname or IP address.
+        username (str): The NSX API username.
+        password (str): The NSX API password.
+        lb_config (dict): The configuration for the load balancer service.
 
-    def get_load_balancer(self, lb_id):
-        endpoint = f"loadbalancer/service/{lb_id}"
-        return self.call_api(endpoint)
+    Returns:
+        dict: The result of the API request.
+    """
 
-    def create_load_balancer(self, lb_config):
-        endpoint = "loadbalancer/service"
-        return self.call_api(endpoint, method='POST', data=lb_config)
+    # Build the API request URL
+    url = api_spec['nsx']['loadbalancer']['services']['create_lb_service']['url']
 
-    def update_load_balancer(self, lb_id, lb_config):
-        endpoint = f"loadbalancer/service/{lb_id}"
-        return self.call_api(endpoint, method='PUT', data=lb_config)
+    # Build the API request data
+    data = {
+        'display_name': lb_config['display_name'],
+        'description': lb_config['description'],
+        'enabled': lb_config['enabled'],
+        'ip_protocol': lb_config['ip_protocol'],
+        'protocol_port': lb_config['protocol_port'],
+        'source': {
+            'ip_address': lb_config['source']['ip_address'],
+            'port': lb_config['source']['port']
+        },
+        'destination': {
+            'ip_address': lb_config['destination']['ip_address'],
+            'port': lb_config['destination']['port']
+        },
+        'persistence_profile': {
+            'type': lb_config['persistence_profile']['type'],
+            'cookie_name': lb_config['persistence_profile']['cookie_name'],
+            'cookie_mode': lb_config['persistence_profile']['cookie_mode']
+        }
+    }
 
-    def delete_load_balancer(self, lb_id):
-        endpoint = f"loadbalancer/service/{lb_id}"
-        return self.call_api(endpoint, method='DELETE')
+    # Send the API request
+    result = send_api_request('POST', url, headers, data)
 
+    return result
 
-# Parse the YAML file and extract the endpoints and parameters
-with open("/usr/share/ansible/custom_modules/data/vmware_nsx_api_spec.yaml") as file:
-    api_spec = yaml.load(file, Loader=yaml.FullLoader)
+def read_load_balancer(module, host, username, password, service_id):
+    """
+    Reads the configuration of an existing load balancer service in NSX.
 
-load_balancer_spec = api_spec['loadbalancer']['services']
+    Args:
+        module (AnsibleModule): The AnsibleModule object.
+        host (str): The NSX hostname or IP address.
+        username (str): The NSX API username.
+        password (str): The NSX API password.
+        service_id (str): The ID of the load balancer service.
 
-create_lb_params = load_balancer_spec['create']['parameters']
-update_lb_params = load_balancer_spec['update']['parameters']
-delete_lb_params = load_balancer_spec['delete']['parameters']
-get_lb_params = load_balancer_spec['get']['parameters']
-list_lb_params = load_balancer_spec['list']['parameters']
+    Returns:
+        dict: The result of the API request.
+    """
+
+    # Build the API request URL
+    url = api_spec['nsx']['loadbalancer']['services']['get_lb_service']['url'].format(lb_service_id=service_id)
+
+    # Send the API request
+    result = send_api_request('GET', url, headers)
+
+    return result
+
+def delete_load_balancer(module, host, username, password, service_id):
+    """
+    Deletes an existing load balancer service in NSX.
+
+    Args:
+        module (AnsibleModule): The AnsibleModule object.
+        host (str): The NSX hostname or IP address.
+        username (str): The NSX API username.
+        password (str): The NSX API password.
+        service_id (str): The ID of the load balancer service.
+
+    Returns:
+        dict: The result of the API request.
+    """
+
+    # Build the API request URL
+    url = api_spec['nsx']['loadbalancer']['services']['delete_lb_service']['url'].format(lb_service_id=service_id)
+
+    # Send the API request
+    result = send_api_request('DELETE', url, headers)
+
+    return result
+
+def list_lb_service(module, host, username, password):
+    """
+    Lists all the load balancer services in NSX.
+
+    Args:
+        module (AnsibleModule): The AnsibleModule object.
+        host (str): The NSX hostname or IP address.
+        username (str): The NSX API username.
+        password (str): The NSX API password.
+
+    Returns:
+        dict: The result of the API request.
+    """
+
+    # Build the API request URL
+    url = api_spec['nsx']['loadbalancer']['services']['list_lb_service']['url']
+
+    # Send the API request
+    result = send_api_request('GET', url, headers)
+
+    return result
