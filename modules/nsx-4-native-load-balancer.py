@@ -51,7 +51,7 @@ class NSXAPI:
 
 
 # Parse the YAML file and extract the endpoints and parameters
-with open("vmware_nsx_api_spec.yaml") as file:
+with open("/usr/share/ansible/custom_modules/data/vmware_nsx_api_spec.yaml") as file:
     api_spec = yaml.load(file, Loader=yaml.FullLoader)
 
 load_balancer_spec = api_spec['loadbalancer']['services']
